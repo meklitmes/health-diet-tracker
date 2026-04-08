@@ -173,7 +173,58 @@ def daily_summary(user_id):
         "target_cholesterol": target,
         "warning": warning
     })
+@app.route('/weekly-summary/<int:user_id>', methods=['GET'])
+def weekly_summary(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
 
+    cursor.execute("""
+        SELECT DATE(meal_time) as day,
+               COALESCE(SUM(cholesterol * quantity), 0) as total
+        FROM public.meals
+        WHERE user_id = %s
+          AND meal_time >= CURRENT_DATE - INTERVAL '6 days'
+        GROUP BY DATE(meal_time)
+        ORDER BY day ASC
+    """, (user_id,))
 
+    rows = cursor.fetchall()
+    conn.close()
+
+    result = []
+    for row in rows:
+        result.append({
+            "date": str(row[0]),
+            "cholesterol": float(row[1])
+        })
+
+    return jsonify(result)
+@app.route('/risky-foods/<int:user_id>', methods=['GET'])
+def risky_foods(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT food_name,
+               SUM(cholesterol * quantity) as total
+        FROM public.meals
+        WHERE user_id = %s
+          AND DATE(meal_time) = CURRENT_DATE
+        GROUP BY food_name
+        ORDER BY total DESC
+        LIMIT 5
+    """, (user_id,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    result = []
+    for row in rows:
+        result.append({
+            "food_name": row[0],
+            "total_cholesterol": float(row[1])
+        })
+
+    return jsonify(result)
 if __name__ == '__main__':
     app.run(debug=True)
