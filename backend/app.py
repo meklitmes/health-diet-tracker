@@ -2,15 +2,18 @@ from flask import Flask, jsonify, request
 import psycopg2
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Load environment variables from .env
-load_dotenv()
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 app = Flask(__name__)
 
 # Connect to PostgreSQL
 def get_connection():
- return psycopg2.connect(
+   print("DEBUG PASSWORD:", os.getenv("DB_PASSWORD"))
+   return psycopg2.connect(
     host=os.getenv("DB_HOST"),
     database=os.getenv("DB_NAME"),
     user=os.getenv("DB_USER"),
@@ -128,5 +131,49 @@ def get_meals():
         })
 
     return jsonify(result)
+@app.route('/summary/<int:user_id>', methods=['GET'])
+def daily_summary(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # get user target first
+    cursor.execute("""
+        SELECT target_cholesterol
+        FROM public.users
+        WHERE id = %s
+    """, (user_id,))
+    
+    user_target = cursor.fetchone()
+
+    if user_target is None:
+        conn.close()
+        return jsonify({"error": "User not found"}), 404
+
+    target = float(user_target[0])
+
+    # get today's cholesterol total
+    cursor.execute("""
+        SELECT COALESCE(SUM(cholesterol * quantity), 0)
+        FROM public.meals
+        WHERE user_id = %s
+        AND DATE(meal_time) = CURRENT_DATE
+    """, (user_id,))
+    
+    total = cursor.fetchone()[0]
+
+    conn.close()
+
+    warning = None
+    if float(total) > target:
+        warning = "Daily cholesterol limit exceeded"
+
+    return jsonify({
+        "user_id": user_id,
+        "today_total_cholesterol": float(total),
+        "target_cholesterol": target,
+        "warning": warning
+    })
+
+
 if __name__ == '__main__':
     app.run(debug=True)
