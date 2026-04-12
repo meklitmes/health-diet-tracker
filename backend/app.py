@@ -131,6 +131,22 @@ def get_meals():
         })
 
     return jsonify(result)
+
+@app.route('/meals/<int:meal_id>', methods=['DELETE'])
+def delete_meal(meal_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        DELETE FROM public.meals
+        WHERE id = %s
+    """, (meal_id,))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"message": "Meal deleted successfully"})
+
 @app.route('/summary/<int:user_id>', methods=['GET'])
 def daily_summary(user_id):
     conn = get_connection()
